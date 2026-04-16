@@ -252,6 +252,7 @@
     <div class="sidebar-section">
       <div class="nav-item" id="btn-manage-cats"><span class="icon">🏷️</span>カテゴリ管理</div>
       <div class="nav-item" id="btn-import"><span class="icon">📥</span>旅行をインポート</div>
+      <div class="nav-item" id="btn-sync"><span class="icon">📱</span>端末間で同期</div>
     </div>
   </aside>
 
@@ -455,6 +456,28 @@
   </div>
 </div>
 
+<!-- ── Sync Modal ── -->
+<div class="modal-overlay" id="sync-modal">
+  <div class="modal" style="width:440px">
+    <div class="modal-title">📱 端末間でデータを同期</div>
+    <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;line-height:1.6">
+      下のリンクをコピーして、LINEやメモなどで他の端末に送ってください。<br>
+      他の端末でそのリンクを開くと、<strong>全旅行データ</strong>が読み込まれます。
+    </p>
+    <div class="form-label">同期リンク（全データ入り）</div>
+    <div class="share-url-box">
+      <input class="share-url-input" id="sync-url-input" readonly>
+      <button class="btn-copy" id="btn-copy-sync" onclick="copySyncUrl()">コピー</button>
+    </div>
+    <div style="background:var(--expense-light);border-radius:10px;padding:10px 12px;margin-top:12px;font-size:12px;color:#c0392b;line-height:1.6">
+      ⚠️ データを変更したら、再度「端末間で同期」からリンクを取得してください。<br>古いリンクには変更前のデータが入っています。
+    </div>
+    <div class="modal-actions" style="margin-top:16px">
+      <button class="btn-submit" onclick="closeSyncModal()">閉じる</button>
+    </div>
+  </div>
+</div>
+
 <!-- ── Import Modal ── -->
 <div class="modal-overlay" id="import-modal">
   <div class="modal" style="width:420px">
@@ -552,6 +575,18 @@ let selectedCatId = DEFAULT_CATEGORIES[0].id;
 let editingTrip = false;
 
 function loadState() {
+  // Check for full-state sync URL (#sync=...)
+  const hash = location.hash;
+  if (hash.startsWith('#sync=')) {
+    try {
+      const s = JSON.parse(decodeURIComponent(escape(atob(hash.slice(6)))));
+      if (s && s.trips) {
+        localStorage.setItem('tabiState', JSON.stringify(s));
+        history.replaceState(null, '', location.pathname);
+        return s;
+      }
+    } catch(e) {}
+  }
   try {
     const s = JSON.parse(localStorage.getItem('tabiState') || 'null');
     if (s && s.trips) return s;
@@ -592,6 +627,26 @@ function addDays(dateStr, n) {
 
 function saveState() {
   localStorage.setItem('tabiState', JSON.stringify(state));
+}
+
+// ── Sync (cross-device) ──────────────────────────────
+function openSyncModal() {
+  const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(state))));
+  const url = location.href.split('#')[0] + '#sync=' + encoded;
+  document.getElementById('sync-url-input').value = url;
+  document.getElementById('btn-copy-sync').textContent = 'コピー';
+  document.getElementById('sync-modal').classList.add('open');
+}
+function closeSyncModal() {
+  document.getElementById('sync-modal').classList.remove('open');
+}
+function copySyncUrl() {
+  const input = document.getElementById('sync-url-input');
+  navigator.clipboard.writeText(input.value).then(() => {
+    const btn = document.getElementById('btn-copy-sync');
+    btn.textContent = 'コピー済✓';
+    setTimeout(() => btn.textContent = 'コピー', 2000);
+  });
 }
 
 function currentTrip() {
@@ -1208,6 +1263,7 @@ document.getElementById('btn-new-trip').onclick    = () => openTripModal(false);
 document.getElementById('add-expense-btn').onclick = openAddExpense;
 document.getElementById('btn-manage-cats').onclick = openCatManager;
 document.getElementById('btn-import').onclick      = openImportModal;
+document.getElementById('btn-sync').onclick        = openSyncModal;
 
 // Close modals on overlay click
 const MODAL_CLOSERS = {
@@ -1218,6 +1274,7 @@ const MODAL_CLOSERS = {
   'quick-add-cat-modal': closeQuickAddCat,
   'share-modal': closeShareModal,
   'import-modal': closeImportModal,
+  'sync-modal': closeSyncModal,
 };
 Object.entries(MODAL_CLOSERS).forEach(([id, fn]) => {
   document.getElementById(id).addEventListener('click', e => { if (e.target.id === id) fn(); });
@@ -1227,7 +1284,7 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     if (document.getElementById('edit-cat-modal').classList.contains('open')) { closeEditCatModal(); return; }
     if (document.getElementById('quick-add-cat-modal').classList.contains('open')) { closeQuickAddCat(); return; }
-    closeTripModal(); closeExpenseModal(); closeCatModal(); closeShareModal(); closeImportModal();
+    closeTripModal(); closeExpenseModal(); closeCatModal(); closeShareModal(); closeImportModal(); closeSyncModal();
   }
 });
 
