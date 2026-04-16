@@ -5,6 +5,30 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>たびかけいぼ — 旅行予算管理</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script type="module">
+  import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+  import { getDatabase, ref, onValue, set, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js';
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyAU3T3Uoz4GOm204hPphMcANdHuiF9-UR4",
+    authDomain: "tabi-kakeibo.firebaseapp.com",
+    databaseURL: "https://tabi-kakeibo-default-rtdb.firebaseio.com",
+    projectId: "tabi-kakeibo",
+    storageBucket: "tabi-kakeibo.firebasestorage.app",
+    messagingSenderId: "854056528323",
+    appId: "1:854056528323:web:81272ab6e2a4bc5714b576"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db  = getDatabase(app);
+  window._fbDb  = db;
+  window._fbRef = ref;
+  window._fbSet = set;
+  window._fbOnValue = onValue;
+  window._fbServerTimestamp = serverTimestamp;
+  window._fbReady = true;
+  window.dispatchEvent(new Event('firebase-ready'));
+</script>
 <style>
   :root {
     --primary: #6C63FF;
@@ -252,7 +276,7 @@
     <div class="sidebar-section">
       <div class="nav-item" id="btn-manage-cats"><span class="icon">🏷️</span>カテゴリ管理</div>
       <div class="nav-item" id="btn-import"><span class="icon">📥</span>旅行をインポート</div>
-      <div class="nav-item" id="btn-sync"><span class="icon">📱</span>端末間で同期</div>
+      <div class="nav-item" id="btn-sync"><span class="icon">📱</span>端末間で同期<span id="sync-status" style="font-size:10px;margin-left:auto;opacity:.7"></span></div>
     </div>
   </aside>
 
@@ -459,18 +483,19 @@
 <!-- ── Sync Modal ── -->
 <div class="modal-overlay" id="sync-modal">
   <div class="modal" style="width:440px">
-    <div class="modal-title">📱 端末間でデータを同期</div>
+    <div class="modal-title">📱 端末間でリアルタイム同期</div>
     <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;line-height:1.6">
-      下のリンクをコピーして、LINEやメモなどで他の端末に送ってください。<br>
-      他の端末でそのリンクを開くと、<strong>全旅行データ</strong>が読み込まれます。
+      下のリンクを他の端末やメンバーに送ってください。<br>
+      開くだけで<strong>自動的にリアルタイム同期</strong>が始まります。
     </p>
-    <div class="form-label">同期リンク（全データ入り）</div>
+    <div class="form-label">同期用リンク（このリンクで繋がる）</div>
     <div class="share-url-box">
       <input class="share-url-input" id="sync-url-input" readonly>
       <button class="btn-copy" id="btn-copy-sync" onclick="copySyncUrl()">コピー</button>
     </div>
-    <div style="background:var(--expense-light);border-radius:10px;padding:10px 12px;margin-top:12px;font-size:12px;color:#c0392b;line-height:1.6">
-      ⚠️ データを変更したら、再度「端末間で同期」からリンクを取得してください。<br>古いリンクには変更前のデータが入っています。
+    <div style="background:var(--primary-light);border-radius:10px;padding:10px 12px;margin-top:12px;font-size:12px;color:var(--primary);line-height:1.7">
+      ✅ このリンクを開いた全員が同じデータをリアルタイムで共有します。<br>
+      💡 LINEやメモでリンクを送るだけでOKです。
     </div>
     <div class="modal-actions" style="margin-top:16px">
       <button class="btn-submit" onclick="closeSyncModal()">閉じる</button>
@@ -575,8 +600,26 @@ let selectedCatId = DEFAULT_CATEGORIES[0].id;
 let editingTrip = false;
 
 function loadState() {
-  // Check for full-state sync URL (#sync=...)
+  // #join=SYNCID → join an existing sync group
   const hash = location.hash;
+  if (hash.startsWith('#join=')) {
+    const joinId = hash.slice(6).trim();
+    if (joinId) {
+      history.replaceState(null, '', location.pathname);
+      // Load existing localStorage or default, but override syncId
+      let s;
+      try { s = JSON.parse(localStorage.getItem('tabiState') || 'null'); } catch(e) {}
+      if (!s || !s.trips) {
+        const today = new Date().toISOString().slice(0,10);
+        const sample = makeSampleTrip(today);
+        s = { trips: [sample], currentTripId: sample.id, nextId: 1000 };
+      }
+      s.syncId = joinId;
+      localStorage.setItem('tabiState', JSON.stringify(s));
+      return s;
+    }
+  }
+  // Legacy: #sync= full-data URL
   if (hash.startsWith('#sync=')) {
     try {
       const s = JSON.parse(decodeURIComponent(escape(atob(hash.slice(6)))));
@@ -625,15 +668,82 @@ function addDays(dateStr, n) {
   return d.toISOString().slice(0,10);
 }
 
-function saveState() {
-  localStorage.setItem('tabiState', JSON.stringify(state));
+// ── Firebase Realtime Sync ───────────────────────────
+let _fbListener = null;
+let _syncDebounce = null;
+let _isSyncing = false;
+let _lastPushTs = 0;
+
+function getSyncId() {
+  if (!state.syncId) {
+    state.syncId = Math.random().toString(36).slice(2,10) + Math.random().toString(36).slice(2,10);
+  }
+  return state.syncId;
 }
 
-// ── Sync (cross-device) ──────────────────────────────
+function updateSyncStatus(status) {
+  const el = document.getElementById('sync-status');
+  if (!el) return;
+  const map = {
+    connecting: '🔄 接続中...',
+    synced:     '🟢 同期済み',
+    syncing:    '⬆️ 同期中...',
+    offline:    '🔴 オフライン',
+    receiving:  '⬇️ データを受信中...'
+  };
+  el.textContent = map[status] || status;
+}
+
+function pushToFirebase() {
+  if (!window._fbReady) return;
+  clearTimeout(_syncDebounce);
+  _syncDebounce = setTimeout(() => {
+    try {
+      const syncId = getSyncId();
+      const payload = { data: JSON.stringify(state), ts: Date.now() };
+      const dbRef = window._fbRef(window._fbDb, 'syncs/' + syncId);
+      _lastPushTs = payload.ts;
+      window._fbSet(dbRef, payload)
+        .then(() => updateSyncStatus('synced'))
+        .catch(() => updateSyncStatus('offline'));
+      updateSyncStatus('syncing');
+    } catch(e) { updateSyncStatus('offline'); }
+  }, 600);
+}
+
+function startFirebaseListener() {
+  if (!window._fbReady) { window.addEventListener('firebase-ready', startFirebaseListener, {once:true}); return; }
+  const syncId = getSyncId();
+  updateSyncStatus('connecting');
+  const dbRef = window._fbRef(window._fbDb, 'syncs/' + syncId);
+  if (_fbListener) _fbListener(); // unsubscribe old
+  _fbListener = window._fbOnValue(dbRef, snapshot => {
+    const val = snapshot.val();
+    if (!val || !val.data) { updateSyncStatus('synced'); return; }
+    if (val.ts <= _lastPushTs) { updateSyncStatus('synced'); return; } // own push
+    try {
+      const remote = JSON.parse(val.data);
+      if (!remote || !remote.trips) { updateSyncStatus('synced'); return; }
+      updateSyncStatus('receiving');
+      state = { ...remote, syncId: getSyncId() };
+      localStorage.setItem('tabiState', JSON.stringify(state));
+      _lastPushTs = val.ts;
+      render();
+      updateSyncStatus('synced');
+    } catch(e) { updateSyncStatus('offline'); }
+  }, () => updateSyncStatus('offline'));
+}
+
+function saveState() {
+  localStorage.setItem('tabiState', JSON.stringify(state));
+  pushToFirebase();
+}
+
+// ── Sync Modal ───────────────────────────────────────
 function openSyncModal() {
-  const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(state))));
-  const url = location.href.split('#')[0] + '#sync=' + encoded;
-  document.getElementById('sync-url-input').value = url;
+  const syncId = getSyncId();
+  const joinUrl = location.href.split('#')[0] + '#join=' + syncId;
+  document.getElementById('sync-url-input').value = joinUrl;
   document.getElementById('btn-copy-sync').textContent = 'コピー';
   document.getElementById('sync-modal').classList.add('open');
 }
@@ -1291,6 +1401,7 @@ document.addEventListener('keydown', e => {
 // ── Init ─────────────────────────────────────────────
 render();
 checkUrlHash();
+startFirebaseListener();
 </script>
 </body>
 </html>
