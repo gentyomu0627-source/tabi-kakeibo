@@ -1,0 +1,1239 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>たびかけいぼ — 旅行予算管理</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --primary: #6C63FF;
+    --primary-light: #EEF0FF;
+    --budget: #00C896;
+    --budget-light: #E6FAF5;
+    --expense: #FF6B6B;
+    --expense-light: #FFF0F0;
+    --remaining: #6C63FF;
+    --text: #1A1D3B;
+    --text-muted: #8B90A7;
+    --bg: #F4F6FB;
+    --card: #FFFFFF;
+    --border: #E8EAF2;
+    --shadow: 0 2px 16px rgba(108,99,255,.08);
+    --radius: 16px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, 'Hiragino Sans', 'Noto Sans JP', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+  /* Layout */
+  .app { display: flex; min-height: 100vh; }
+  .sidebar { width: 240px; background: var(--card); border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 24px 0; position: fixed; height: 100vh; z-index: 10; overflow-y: auto; }
+  .main { margin-left: 240px; flex: 1; padding: 28px 32px; }
+
+  /* Sidebar */
+  .logo { padding: 0 24px 20px; display: flex; align-items: center; gap: 10px; }
+  .logo-icon { width: 36px; height: 36px; background: var(--primary); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px; }
+  .logo-text { font-size: 17px; font-weight: 700; color: var(--text); }
+  .sidebar-section { padding: 0 16px; margin-bottom: 8px; }
+  .sidebar-label { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .08em; padding: 0 8px 8px; }
+  .trip-item { display: flex; align-items: center; padding: 10px 12px; border-radius: 10px; cursor: pointer; font-size: 13px; font-weight: 500; color: var(--text-muted); transition: all .15s; margin-bottom: 2px; gap: 8px; }
+  .trip-item:hover { background: var(--primary-light); color: var(--primary); }
+  .trip-item.active { background: var(--primary); color: #fff; }
+  .trip-item .trip-icon { font-size: 16px; flex-shrink: 0; }
+  .trip-item-info { flex: 1; min-width: 0; }
+  .trip-item-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+  .trip-item-dates { font-size: 11px; opacity: .75; margin-top: 1px; }
+  .btn-new-trip { display: flex; align-items: center; gap: 8px; width: 100%; margin: 4px 0; padding: 10px 12px; border: 1.5px dashed var(--border); border-radius: 10px; background: none; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text-muted); transition: all .15s; }
+  .btn-new-trip:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-light); }
+  .nav-divider { height: 1px; background: var(--border); margin: 12px 24px; }
+  .nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; cursor: pointer; font-size: 13px; font-weight: 500; color: var(--text-muted); transition: all .15s; margin-bottom: 2px; }
+  .nav-item:hover { background: var(--primary-light); color: var(--primary); }
+  .nav-item .icon { font-size: 16px; width: 20px; text-align: center; }
+
+  /* Page header */
+  .page-header { margin-bottom: 20px; }
+  .trip-banner { background: var(--card); border-radius: var(--radius); padding: 20px 24px; box-shadow: var(--shadow); display: flex; align-items: center; gap: 16px; margin-bottom: 20px; }
+  .trip-banner-icon { font-size: 36px; }
+  .trip-banner-info { flex: 1; }
+  .trip-banner-name { font-size: 22px; font-weight: 800; color: var(--text); }
+  .trip-banner-dates { font-size: 13px; color: var(--text-muted); margin-top: 3px; display: flex; align-items: center; gap: 6px; }
+  .trip-banner-dates .date-badge { background: var(--primary-light); color: var(--primary); padding: 2px 8px; border-radius: 99px; font-weight: 600; font-size: 12px; }
+  .trip-banner-nights { background: var(--bg); border: 1px solid var(--border); padding: 2px 8px; border-radius: 99px; font-size: 12px; color: var(--text-muted); font-weight: 600; }
+  .btn-edit-trip { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer; color: var(--text-muted); transition: all .15s; display: flex; align-items: center; gap: 6px; }
+  .btn-edit-trip:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-light); }
+
+  .no-trip { text-align: center; padding: 80px 20px; color: var(--text-muted); }
+  .no-trip-icon { font-size: 64px; margin-bottom: 16px; }
+  .no-trip h2 { font-size: 20px; color: var(--text); margin-bottom: 8px; }
+  .no-trip p { font-size: 14px; margin-bottom: 20px; }
+  .btn-primary { background: var(--primary); color: #fff; border: none; border-radius: 12px; padding: 12px 24px; font-size: 14px; font-weight: 700; cursor: pointer; transition: opacity .15s; }
+  .btn-primary:hover { opacity: .88; }
+
+  /* Summary cards */
+  .summary-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-bottom: 20px; }
+  .summary-card { background: var(--card); border-radius: var(--radius); padding: 20px 24px; box-shadow: var(--shadow); }
+  .summary-card.budget-card { border-top: 3px solid var(--budget); }
+  .summary-card.expense-card { border-top: 3px solid var(--expense); }
+  .card-label { font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 8px; }
+  .card-amount { font-size: 30px; font-weight: 800; letter-spacing: -.02em; }
+  .card-amount.budget { color: var(--budget); }
+  .card-amount.expense { color: var(--expense); }
+  .card-sub { font-size: 12px; color: var(--text-muted); margin-top: 6px; }
+  .btn-edit-budget { background: none; border: 1px solid var(--border); border-radius: 8px; padding: 3px 10px; font-size: 11px; font-weight: 600; cursor: pointer; color: var(--text-muted); margin-left: 8px; transition: all .15s; vertical-align: middle; }
+  .btn-edit-budget:hover { border-color: var(--budget); color: var(--budget); }
+
+  /* Remaining bar */
+  .remaining-card { background: linear-gradient(135deg, #6C63FF 0%, #8B5CF6 100%); border-radius: var(--radius); padding: 20px 24px; box-shadow: 0 4px 20px rgba(108,99,255,.25); margin-bottom: 20px; color: #fff; }
+  .remaining-label { font-size: 11px; font-weight: 700; opacity: .8; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 8px; }
+  .remaining-amount { font-size: 36px; font-weight: 900; letter-spacing: -.02em; }
+  .remaining-amount.over { color: #FFD6D6; }
+  .remaining-bar-track { height: 8px; background: rgba(255,255,255,.25); border-radius: 99px; overflow: hidden; margin-top: 12px; }
+  .remaining-bar-fill { height: 100%; border-radius: 99px; transition: width .6s ease; background: rgba(255,255,255,.9); }
+  .remaining-bar-fill.warn { background: #FFC43D; }
+  .remaining-bar-fill.over { background: #FF6B6B; }
+  .remaining-bar-labels { display: flex; justify-content: space-between; font-size: 11px; opacity: .75; margin-top: 5px; }
+
+  /* Content grid */
+  .content-grid { display: grid; grid-template-columns: 1fr 340px; gap: 20px; }
+
+  /* Card */
+  .card { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
+  .card-header { padding: 16px 20px 12px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); }
+  .card-title { font-size: 14px; font-weight: 700; }
+  .card-header-actions { display: flex; gap: 8px; align-items: center; }
+  .btn-add { background: var(--primary); color: #fff; border: none; border-radius: 10px; padding: 7px 14px; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 5px; transition: opacity .15s; }
+  .btn-add:hover { opacity: .88; }
+  .btn-icon { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; font-size: 14px; cursor: pointer; transition: all .15s; color: var(--text-muted); }
+  .btn-icon:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-light); }
+
+  /* Transactions */
+  .tx-list { max-height: 480px; overflow-y: auto; }
+  .tx-date-group { padding: 8px 20px 2px; font-size: 11px; font-weight: 700; color: var(--text-muted); background: var(--bg); text-transform: uppercase; letter-spacing: .04em; }
+  .tx-item { display: flex; align-items: center; padding: 11px 20px; gap: 12px; border-bottom: 1px solid var(--border); cursor: pointer; transition: background .12s; }
+  .tx-item:hover { background: var(--bg); }
+  .tx-icon { width: 38px; height: 38px; border-radius: 11px; display: flex; align-items: center; justify-content: center; font-size: 19px; flex-shrink: 0; background: var(--expense-light); }
+  .tx-info { flex: 1; min-width: 0; }
+  .tx-name { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tx-cat { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
+  .tx-amount { font-size: 14px; font-weight: 700; color: var(--expense); white-space: nowrap; }
+  .tx-delete { opacity: 0; background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 15px; padding: 4px; border-radius: 6px; transition: opacity .15s, background .15s; }
+  .tx-item:hover .tx-delete { opacity: 1; }
+  .tx-delete:hover { background: var(--expense-light); color: var(--expense); }
+
+  /* Right panel */
+  .right-panel { display: flex; flex-direction: column; gap: 20px; }
+
+  /* Donut chart */
+  .chart-wrap { padding: 16px 20px; }
+  .chart-canvas-wrap { position: relative; width: 170px; height: 170px; margin: 0 auto 14px; }
+  .chart-center { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); text-align: center; pointer-events: none; }
+  .chart-center-label { font-size: 10px; color: var(--text-muted); }
+  .chart-center-amount { font-size: 16px; font-weight: 800; color: var(--expense); }
+  .legend { display: flex; flex-direction: column; gap: 7px; }
+  .legend-item { display: flex; align-items: center; gap: 8px; }
+  .legend-dot { width: 9px; height: 9px; border-radius: 3px; flex-shrink: 0; }
+  .legend-name { flex: 1; font-size: 12px; color: var(--text); }
+  .legend-pct { font-size: 11px; color: var(--text-muted); }
+  .legend-amt { font-size: 12px; font-weight: 600; color: var(--expense); }
+
+  /* Category budget list */
+  .budget-list { padding: 6px 0; }
+  .budget-item { padding: 9px 20px; }
+  .budget-item-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
+  .budget-item-name { font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 5px; }
+  .budget-item-amounts { font-size: 11px; color: var(--text-muted); }
+  .budget-item-amounts span { font-weight: 700; color: var(--text); }
+  .budget-bar-track { height: 5px; background: var(--border); border-radius: 99px; overflow: hidden; }
+  .budget-bar-fill { height: 100%; border-radius: 99px; transition: width .5s ease; }
+  .budget-bar-fill.ok { background: var(--budget); }
+  .budget-bar-fill.warn { background: #FFC43D; }
+  .budget-bar-fill.over { background: var(--expense); }
+
+  /* ── Modals ── */
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.48); z-index: 100; align-items: center; justify-content: center; }
+  .modal-overlay.sub { z-index: 200; background: rgba(0,0,0,.25); }
+  .modal-overlay.open { display: flex; }
+  .modal { background: var(--card); border-radius: 20px; padding: 28px; width: 440px; max-width: 95vw; box-shadow: 0 20px 60px rgba(0,0,0,.2); max-height: 92vh; overflow-y: auto; }
+  .modal-title { font-size: 18px; font-weight: 700; margin-bottom: 20px; }
+  .form-group { margin-bottom: 14px; }
+  .form-label { font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 6px; display: block; }
+  .form-input { width: 100%; border: 1.5px solid var(--border); border-radius: 10px; padding: 10px 14px; font-size: 15px; font-family: inherit; color: var(--text); background: var(--bg); outline: none; transition: border-color .15s; }
+  .form-input:focus { border-color: var(--primary); background: #fff; }
+  .form-input.error { border-color: var(--expense); }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .modal-actions { display: flex; gap: 10px; margin-top: 20px; }
+  .btn-cancel { flex: 1; padding: 12px; border: 1.5px solid var(--border); border-radius: 10px; background: none; font-size: 14px; font-weight: 600; cursor: pointer; color: var(--text-muted); transition: background .15s; }
+  .btn-cancel:hover { background: var(--bg); }
+  .btn-submit { flex: 2; padding: 12px; border: none; border-radius: 10px; background: var(--primary); color: #fff; font-size: 14px; font-weight: 700; cursor: pointer; transition: opacity .15s; }
+  .btn-submit:hover { opacity: .88; }
+  .btn-danger { padding: 12px; border: none; border-radius: 10px; background: var(--expense-light); color: var(--expense); font-size: 13px; font-weight: 700; cursor: pointer; transition: opacity .15s; }
+  .btn-danger:hover { opacity: .8; }
+
+  /* Category grid in expense modal */
+  .cat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; }
+  .cat-btn { position: relative; padding: 8px 4px; border: 1.5px solid var(--border); border-radius: 10px; background: none; cursor: pointer; font-size: 19px; text-align: center; transition: all .15s; }
+  .cat-btn span { display: block; font-size: 10px; color: var(--text-muted); margin-top: 2px; font-family: inherit; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cat-btn.selected { border-color: var(--primary); background: var(--primary-light); }
+  .cat-btn.selected span { color: var(--primary); }
+  .cat-btn-edit { display: none; position: absolute; top: 3px; right: 3px; width: 16px; height: 16px; border-radius: 4px; border: none; background: rgba(108,99,255,.15); color: var(--primary); font-size: 9px; cursor: pointer; align-items: center; justify-content: center; line-height: 1; padding: 0; z-index: 1; }
+  .cat-btn:hover .cat-btn-edit { display: flex; }
+  .cat-btn-edit:hover { background: var(--primary); color: #fff; }
+  .cat-btn-add { padding: 8px 4px; border: 1.5px dashed var(--border); border-radius: 10px; background: none; cursor: pointer; font-size: 19px; text-align: center; transition: all .15s; color: var(--text-muted); }
+  .cat-btn-add span { display: block; font-size: 10px; color: var(--text-muted); margin-top: 2px; font-family: inherit; }
+  .cat-btn-add:hover { border-color: var(--primary); background: var(--primary-light); color: var(--primary); }
+  .cat-btn-add:hover span { color: var(--primary); }
+
+  /* Category manager */
+  .cat-manager-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+  .cat-manager-item { display: flex; align-items: center; gap: 10px; background: var(--bg); border-radius: 10px; padding: 10px 12px; }
+  .cat-manager-emoji { font-size: 22px; width: 36px; text-align: center; }
+  .cat-manager-name { flex: 1; font-size: 14px; font-weight: 600; }
+  .cat-manager-budget { font-size: 12px; color: var(--text-muted); }
+  .cat-manager-actions { display: flex; gap: 6px; }
+  .btn-sm { padding: 5px 10px; border-radius: 7px; font-size: 12px; font-weight: 600; cursor: pointer; border: 1px solid var(--border); background: var(--card); color: var(--text-muted); transition: all .15s; }
+  .btn-sm:hover { border-color: var(--primary); color: var(--primary); }
+  .btn-sm.del:hover { border-color: var(--expense); color: var(--expense); background: var(--expense-light); }
+  .add-cat-form { background: var(--bg); border-radius: 12px; padding: 14px; border: 1.5px dashed var(--border); }
+  .add-cat-form-title { font-size: 12px; font-weight: 700; color: var(--text-muted); margin-bottom: 10px; }
+  .emoji-input-wrap { display: flex; gap: 8px; }
+  .emoji-input { width: 56px; font-size: 20px; text-align: center; }
+
+  /* Share / Import */
+  .share-url-box { display: flex; gap: 8px; margin: 12px 0; }
+  .share-url-input { flex: 1; border: 1.5px solid var(--border); border-radius: 10px; padding: 9px 12px; font-size: 12px; font-family: inherit; color: var(--text-muted); background: var(--bg); outline: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .btn-copy { background: var(--primary); color: #fff; border: none; border-radius: 10px; padding: 9px 14px; font-size: 13px; font-weight: 700; cursor: pointer; white-space: nowrap; transition: opacity .15s; }
+  .btn-copy:hover { opacity: .85; }
+  .btn-copy.copied { background: var(--budget); }
+  .share-divider { display: flex; align-items: center; gap: 10px; color: var(--text-muted); font-size: 12px; margin: 14px 0; }
+  .share-divider::before, .share-divider::after { content:''; flex:1; height:1px; background:var(--border); }
+  .btn-download { width: 100%; padding: 11px; border: 1.5px solid var(--border); border-radius: 10px; background: none; font-size: 14px; font-weight: 600; cursor: pointer; color: var(--text); transition: all .15s; display: flex; align-items: center; justify-content: center; gap: 8px; }
+  .btn-download:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-light); }
+  .import-drop { border: 2px dashed var(--border); border-radius: 12px; padding: 24px; text-align: center; cursor: pointer; transition: all .15s; color: var(--text-muted); margin-bottom: 14px; }
+  .import-drop:hover, .import-drop.drag-over { border-color: var(--primary); background: var(--primary-light); color: var(--primary); }
+  .import-drop-icon { font-size: 32px; margin-bottom: 8px; }
+  .import-drop p { font-size: 13px; }
+  .import-notice { background: var(--budget-light); border: 1px solid var(--budget); border-radius: 10px; padding: 12px 14px; font-size: 13px; color: #00785a; margin-bottom: 14px; display: none; }
+  .import-notice.show { display: block; }
+
+  /* Empty state */
+  .empty { text-align: center; padding: 40px 20px; color: var(--text-muted); }
+  .empty-icon { font-size: 40px; margin-bottom: 10px; }
+  .empty p { font-size: 13px; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+
+  @media (max-width: 900px) {
+    .sidebar { display: none; }
+    .main { margin-left: 0; padding: 16px; }
+    .content-grid { grid-template-columns: 1fr; }
+    .summary-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="logo">
+      <div class="logo-icon">✈️</div>
+      <span class="logo-text">たびかけいぼ</span>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-label">旅行一覧</div>
+      <div id="trip-list"></div>
+      <button class="btn-new-trip" id="btn-new-trip">＋ 新しい旅行を追加</button>
+    </div>
+
+    <div class="nav-divider"></div>
+    <div class="sidebar-section">
+      <div class="nav-item" id="btn-manage-cats"><span class="icon">🏷️</span>カテゴリ管理</div>
+      <div class="nav-item" id="btn-import"><span class="icon">📥</span>旅行をインポート</div>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="main" id="main-content">
+    <div class="no-trip" id="no-trip-view">
+      <div class="no-trip-icon">🗺️</div>
+      <h2>旅行を追加しよう</h2>
+      <p>旅行の名前と日程・予算を登録して<br>支出を記録していきましょう</p>
+      <button class="btn-primary" onclick="openTripModal()">＋ 旅行を追加する</button>
+    </div>
+
+    <div id="trip-view" style="display:none">
+      <!-- Trip banner -->
+      <div class="trip-banner" id="trip-banner">
+        <div class="trip-banner-icon" id="banner-icon">✈️</div>
+        <div class="trip-banner-info">
+          <div class="trip-banner-name" id="banner-name">—</div>
+          <div class="trip-banner-dates">
+            <span class="date-badge" id="banner-start">—</span>
+            <span style="opacity:.4">→</span>
+            <span class="date-badge" id="banner-end">—</span>
+            <span class="trip-banner-nights" id="banner-nights">—</span>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn-edit-trip" onclick="openShareModal()">🔗 共有</button>
+          <button class="btn-edit-trip" onclick="openTripModal(true)">✏️ 編集</button>
+        </div>
+      </div>
+
+      <!-- Summary -->
+      <div class="summary-grid">
+        <div class="summary-card budget-card">
+          <div class="card-label">旅行予算</div>
+          <div style="display:flex;align-items:baseline;flex-wrap:wrap;gap:4px">
+            <div class="card-amount budget" id="total-budget">¥0</div>
+            <button class="btn-edit-budget" onclick="openTripModal(true)">変更</button>
+          </div>
+          <div class="card-sub" id="budget-sub">クリックして予算を設定</div>
+        </div>
+        <div class="summary-card expense-card">
+          <div class="card-label">支出合計</div>
+          <div class="card-amount expense" id="total-expense">¥0</div>
+          <div class="card-sub" id="expense-count">0件の支出</div>
+        </div>
+      </div>
+
+      <!-- Remaining bar -->
+      <div class="remaining-card">
+        <div class="remaining-label">残り予算</div>
+        <div class="remaining-amount" id="remaining-amount">¥0</div>
+        <div class="remaining-bar-track">
+          <div class="remaining-bar-fill" id="remaining-bar" style="width:100%"></div>
+        </div>
+        <div class="remaining-bar-labels">
+          <span id="remaining-label-left">予算の使用率</span>
+          <span id="remaining-pct">0%</span>
+        </div>
+      </div>
+
+      <!-- Content grid -->
+      <div class="content-grid">
+        <!-- Transactions -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">支出履歴</span>
+            <button class="btn-add" id="add-expense-btn">＋ 支出を追加</button>
+          </div>
+          <div class="tx-list" id="tx-list"></div>
+        </div>
+
+        <!-- Right panel -->
+        <div class="right-panel">
+          <!-- Chart -->
+          <div class="card">
+            <div class="card-header"><span class="card-title">カテゴリ内訳</span></div>
+            <div class="chart-wrap">
+              <div class="chart-canvas-wrap">
+                <canvas id="donut-chart"></canvas>
+                <div class="chart-center">
+                  <div class="chart-center-label">支出合計</div>
+                  <div class="chart-center-amount" id="chart-center-amount">¥0</div>
+                </div>
+              </div>
+              <div class="legend" id="chart-legend"></div>
+            </div>
+          </div>
+
+          <!-- Category budget -->
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">カテゴリ別予算</span>
+              <button class="btn-icon" onclick="openCatManager()" title="カテゴリ管理">⚙️</button>
+            </div>
+            <div class="budget-list" id="budget-list"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- ── Trip Modal ── -->
+<div class="modal-overlay" id="trip-modal">
+  <div class="modal">
+    <div class="modal-title" id="trip-modal-title">旅行を追加</div>
+    <div class="form-group">
+      <label class="form-label">旅行名</label>
+      <input class="form-input" type="text" id="trip-name" placeholder="例：京都旅行、沖縄2泊3日">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">開始日</label>
+        <input class="form-input" type="date" id="trip-start">
+      </div>
+      <div class="form-group">
+        <label class="form-label">終了日</label>
+        <input class="form-input" type="date" id="trip-end">
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">総予算（円）</label>
+      <input class="form-input" type="number" id="trip-budget" placeholder="例：150000" min="0">
+    </div>
+    <div class="form-group">
+      <label class="form-label">アイコン（絵文字）</label>
+      <input class="form-input" id="trip-icon" placeholder="✈️" maxlength="4" style="font-size:22px;width:80px">
+    </div>
+    <div class="modal-actions" id="trip-modal-actions">
+      <button class="btn-cancel" onclick="closeTripModal()">キャンセル</button>
+      <button class="btn-submit" onclick="submitTrip()">保存する</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Expense Modal ── -->
+<div class="modal-overlay" id="expense-modal">
+  <div class="modal">
+    <div class="modal-title" id="expense-modal-title">支出を追加</div>
+    <div class="form-group">
+      <label class="form-label">金額（円）</label>
+      <input class="form-input" type="number" id="exp-amount" placeholder="0" min="1">
+    </div>
+    <div class="form-group">
+      <label class="form-label">カテゴリ</label>
+      <div class="cat-grid" id="cat-grid"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">メモ（任意）</label>
+        <input class="form-input" type="text" id="exp-memo" placeholder="メモを入力">
+      </div>
+      <div class="form-group">
+        <label class="form-label">日付</label>
+        <input class="form-input" type="date" id="exp-date">
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeExpenseModal()">キャンセル</button>
+      <button class="btn-submit" onclick="submitExpense()">追加する</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Category Manager Modal ── -->
+<div class="modal-overlay" id="cat-modal">
+  <div class="modal">
+    <div class="modal-title">カテゴリ管理</div>
+    <div class="cat-manager-list" id="cat-manager-list"></div>
+    <div class="add-cat-form">
+      <div class="add-cat-form-title">＋ 新しいカテゴリを追加</div>
+      <div class="emoji-input-wrap">
+        <input class="form-input emoji-input" type="text" id="new-cat-icon" placeholder="🎯" maxlength="4">
+        <input class="form-input" type="text" id="new-cat-name" placeholder="カテゴリ名（例：温泉）" style="flex:1">
+        <input class="form-input" type="number" id="new-cat-budget" placeholder="予算（円）" style="width:110px">
+      </div>
+      <button class="btn-primary" style="margin-top:10px;width:100%;padding:10px" onclick="addCategory()">追加する</button>
+    </div>
+    <div class="modal-actions" style="margin-top:16px">
+      <button class="btn-submit" onclick="closeCatModal()">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Share Modal ── -->
+<div class="modal-overlay" id="share-modal">
+  <div class="modal" style="width:420px">
+    <div class="modal-title">🔗 旅行を共有</div>
+    <p style="font-size:13px;color:var(--text-muted);margin-bottom:14px">リンクを送るか、ファイルを渡すと相手がこの旅行データを読み込めます。</p>
+    <div class="form-label">共有リンク</div>
+    <div class="share-url-box">
+      <input class="share-url-input" id="share-url-input" readonly>
+      <button class="btn-copy" id="btn-copy" onclick="copyShareUrl()">コピー</button>
+    </div>
+    <div class="share-divider">または</div>
+    <button class="btn-download" onclick="downloadTripJson()">💾 ファイルとして保存（.json）</button>
+    <div class="modal-actions">
+      <button class="btn-submit" onclick="closeShareModal()">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Import Modal ── -->
+<div class="modal-overlay" id="import-modal">
+  <div class="modal" style="width:420px">
+    <div class="modal-title">📥 旅行をインポート</div>
+    <div class="import-notice" id="import-notice"></div>
+    <div class="import-drop" id="import-drop" onclick="document.getElementById('import-file').click()">
+      <div class="import-drop-icon">📂</div>
+      <p><strong>クリックしてファイルを選択</strong><br>またはここにドロップ（.json）</p>
+    </div>
+    <input type="file" id="import-file" accept=".json" style="display:none">
+    <div class="share-divider">または</div>
+    <div class="form-group">
+      <label class="form-label">共有リンクをここに貼り付け</label>
+      <input class="form-input" type="text" id="import-url-input" placeholder="http://...#trip=...">
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeImportModal()">キャンセル</button>
+      <button class="btn-submit" onclick="importFromUrl()">インポートする</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Quick Add Category Modal (sub, opens above expense modal) ── -->
+<div class="modal-overlay sub" id="quick-add-cat-modal">
+  <div class="modal" style="width:360px">
+    <div class="modal-title">カテゴリを追加</div>
+    <div class="form-group">
+      <label class="form-label">アイコン（絵文字）</label>
+      <input class="form-input" type="text" id="qadd-icon" placeholder="🎯" maxlength="4" style="font-size:22px;width:80px">
+    </div>
+    <div class="form-group">
+      <label class="form-label">カテゴリ名</label>
+      <input class="form-input" type="text" id="qadd-name" placeholder="例：温泉、アクティビティ">
+    </div>
+    <div class="form-group">
+      <label class="form-label">予算（円・任意）</label>
+      <input class="form-input" type="number" id="qadd-budget" placeholder="0" min="0">
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeQuickAddCat()">キャンセル</button>
+      <button class="btn-submit" onclick="submitQuickAddCat()">追加する</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Edit Category Modal (sub) ── -->
+<div class="modal-overlay sub" id="edit-cat-modal">
+  <div class="modal">
+    <div class="modal-title">カテゴリを編集</div>
+    <input type="hidden" id="edit-cat-id">
+    <div class="form-group">
+      <label class="form-label">アイコン（絵文字）</label>
+      <input class="form-input" type="text" id="edit-cat-icon" maxlength="4" style="font-size:22px;width:80px">
+    </div>
+    <div class="form-group">
+      <label class="form-label">カテゴリ名</label>
+      <input class="form-input" type="text" id="edit-cat-name">
+    </div>
+    <div class="form-group">
+      <label class="form-label">予算（円）</label>
+      <input class="form-input" type="number" id="edit-cat-budget" placeholder="0（未設定）" min="0">
+    </div>
+    <div class="modal-actions">
+      <button class="btn-danger" onclick="deleteCategory()">削除</button>
+      <button class="btn-cancel" onclick="closeEditCatModal()">キャンセル</button>
+      <button class="btn-submit" onclick="submitEditCat()">保存</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Constants ───────────────────────────────────────
+const CAT_COLORS = [
+  '#6C63FF','#FF6B6B','#00C896','#FFC43D','#4ECDC4',
+  '#FF8CC8','#A78BFA','#F97316','#06B6D4','#84CC16',
+  '#EC4899','#8B5CF6','#14B8A6','#FB923C','#A3E635',
+];
+
+const DEFAULT_CATEGORIES = [
+  { id:'transport', icon:'✈️', label:'交通費',   budget: 30000 },
+  { id:'hotel',     icon:'🏨', label:'宿泊費',   budget: 50000 },
+  { id:'food',      icon:'🍽️', label:'食費',     budget: 20000 },
+  { id:'sightseeing',icon:'🎡',label:'観光',     budget: 15000 },
+  { id:'souvenir',  icon:'🎁', label:'お土産',   budget: 10000 },
+  { id:'shopping',  icon:'🛍️', label:'ショッピング', budget: 0 },
+  { id:'taxi',      icon:'🚕', label:'タクシー', budget: 0 },
+  { id:'other',     icon:'📦', label:'その他',   budget: 0 },
+];
+
+// ── State ───────────────────────────────────────────
+let state = loadState();
+let donutChart = null;
+let editExpenseId = null;
+let selectedCatId = DEFAULT_CATEGORIES[0].id;
+let editingTrip = false;
+
+function loadState() {
+  try {
+    const s = JSON.parse(localStorage.getItem('tabiState') || 'null');
+    if (s && s.trips) return s;
+  } catch(e) {}
+  const today = new Date().toISOString().slice(0,10);
+  const sample = makeSampleTrip(today);
+  return { trips: [sample], currentTripId: sample.id, nextId: 1000 };
+}
+
+function makeSampleTrip(today) {
+  const start = today;
+  const end = addDays(today, 3);
+  return {
+    id: 1,
+    name: '京都旅行',
+    icon: '⛩️',
+    startDate: start,
+    endDate: end,
+    budget: 150000,
+    transactions: [
+      { id:10, cat:'transport', amount:28000, memo:'新幹線往復', date: start },
+      { id:11, cat:'hotel',     amount:42000, memo:'旅館3泊',    date: start },
+      { id:12, cat:'food',      amount:3800,  memo:'昼食',       date: start },
+      { id:13, cat:'sightseeing',amount:2000, memo:'金閣寺',     date: addDays(start,1) },
+      { id:14, cat:'food',      amount:4500,  memo:'夕食',       date: addDays(start,1) },
+      { id:15, cat:'souvenir',  amount:6200,  memo:'お土産',     date: addDays(start,2) },
+      { id:16, cat:'taxi',      amount:1800,  memo:'タクシー',   date: addDays(start,2) },
+    ],
+    categories: JSON.parse(JSON.stringify(DEFAULT_CATEGORIES)),
+  };
+}
+
+function addDays(dateStr, n) {
+  const d = new Date(dateStr + 'T00:00:00');
+  d.setDate(d.getDate() + n);
+  return d.toISOString().slice(0,10);
+}
+
+function saveState() {
+  localStorage.setItem('tabiState', JSON.stringify(state));
+}
+
+function currentTrip() {
+  return state.trips.find(t => t.id === state.currentTripId) || null;
+}
+
+// ── Format ──────────────────────────────────────────
+function fmt(n) { return '¥' + Math.abs(n).toLocaleString('ja-JP'); }
+
+function fmtDate(s) {
+  if (!s) return '—';
+  const d = new Date(s + 'T00:00:00');
+  return `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}`;
+}
+
+function nightCount(start, end) {
+  if (!start || !end) return 0;
+  const diff = (new Date(end+'T00:00:00') - new Date(start+'T00:00:00')) / 86400000;
+  return Math.max(0, diff);
+}
+
+function getCat(trip, id) {
+  return (trip.categories || DEFAULT_CATEGORIES).find(c => c.id === id)
+    || { id:'other', icon:'📦', label:'その他', budget:0 };
+}
+
+// ── Render ──────────────────────────────────────────
+function render() {
+  renderSidebar();
+  const trip = currentTrip();
+  if (!trip) {
+    document.getElementById('no-trip-view').style.display = '';
+    document.getElementById('trip-view').style.display = 'none';
+    return;
+  }
+  document.getElementById('no-trip-view').style.display = 'none';
+  document.getElementById('trip-view').style.display = '';
+
+  renderBanner(trip);
+  renderSummary(trip);
+  renderTxList(trip);
+  renderChart(trip);
+  renderBudgetList(trip);
+  saveState();
+}
+
+function renderSidebar() {
+  const el = document.getElementById('trip-list');
+  el.innerHTML = state.trips.map(t => `
+    <div class="trip-item ${t.id === state.currentTripId ? 'active' : ''}" onclick="selectTrip(${t.id})">
+      <span class="trip-icon">${t.icon || '✈️'}</span>
+      <div class="trip-item-info">
+        <div class="trip-item-name">${esc(t.name)}</div>
+        <div class="trip-item-dates">${fmtDate(t.startDate)} 〜 ${fmtDate(t.endDate)}</div>
+      </div>
+    </div>`).join('');
+}
+
+function renderBanner(trip) {
+  document.getElementById('banner-icon').textContent = trip.icon || '✈️';
+  document.getElementById('banner-name').textContent = trip.name;
+  document.getElementById('banner-start').textContent = fmtDate(trip.startDate);
+  document.getElementById('banner-end').textContent = fmtDate(trip.endDate);
+  const nights = nightCount(trip.startDate, trip.endDate);
+  document.getElementById('banner-nights').textContent = nights > 0 ? `${nights}泊${nights+1}日` : '日帰り';
+}
+
+function renderSummary(trip) {
+  const expense = trip.transactions.reduce((s,t) => s + t.amount, 0);
+  const budget = trip.budget || 0;
+  const remaining = budget - expense;
+  const pct = budget > 0 ? Math.min(100, Math.round(expense / budget * 100)) : 0;
+  const barPct = budget > 0 ? Math.max(0, Math.round(remaining / budget * 100)) : 0;
+
+  document.getElementById('total-budget').textContent = fmt(budget);
+  document.getElementById('budget-sub').textContent = budget > 0 ? `1日あたり約 ${fmt(Math.round(budget / Math.max(1, nightCount(trip.startDate,trip.endDate)+1)))}` : '';
+  document.getElementById('total-expense').textContent = fmt(expense);
+  document.getElementById('expense-count').textContent = `${trip.transactions.length}件の支出`;
+
+  const remEl = document.getElementById('remaining-amount');
+  remEl.textContent = remaining >= 0 ? fmt(remaining) : `−${fmt(remaining)}`;
+  remEl.className = 'remaining-amount' + (remaining < 0 ? ' over' : '');
+
+  const bar = document.getElementById('remaining-bar');
+  bar.style.width = barPct + '%';
+  bar.className = 'remaining-bar-fill ' + (pct < 70 ? '' : pct < 90 ? 'warn' : 'over');
+
+  document.getElementById('remaining-pct').textContent = `使用率 ${pct}%`;
+  document.getElementById('remaining-label-left').textContent =
+    remaining >= 0 ? `あと ${fmt(remaining)} 使えます` : `${fmt(Math.abs(remaining))} 予算オーバー！`;
+}
+
+function renderTxList(trip) {
+  const txs = [...trip.transactions].sort((a,b) => a.date.localeCompare(b.date));
+  const el = document.getElementById('tx-list');
+
+  if (txs.length === 0) {
+    el.innerHTML = `<div class="empty"><div class="empty-icon">🧾</div><p>支出がまだありません<br>「＋ 支出を追加」ボタンから記録しましょう</p></div>`;
+    return;
+  }
+
+  const DAYS = ['日','月','火','水','木','金','土'];
+  let html = '';
+  let lastDate = '';
+  for (const tx of txs) {
+    if (tx.date !== lastDate) {
+      const d = new Date(tx.date + 'T00:00:00');
+      html += `<div class="tx-date-group">${d.getMonth()+1}月${d.getDate()}日（${DAYS[d.getDay()]}）</div>`;
+      lastDate = tx.date;
+    }
+    const cat = getCat(trip, tx.cat);
+    html += `
+      <div class="tx-item" onclick="openEditExpense(${tx.id})">
+        <div class="tx-icon">${cat.icon}</div>
+        <div class="tx-info">
+          <div class="tx-name">${esc(tx.memo) || cat.label}</div>
+          <div class="tx-cat">${cat.label}</div>
+        </div>
+        <div class="tx-amount">−${fmt(tx.amount)}</div>
+        <button class="tx-delete" onclick="deleteExpense(event,${tx.id})">×</button>
+      </div>`;
+  }
+  el.innerHTML = html;
+}
+
+function renderChart(trip) {
+  const total = trip.transactions.reduce((s,t) => s + t.amount, 0);
+  const catMap = {};
+  for (const tx of trip.transactions) catMap[tx.cat] = (catMap[tx.cat]||0) + tx.amount;
+  const sorted = Object.entries(catMap).sort((a,b) => b[1]-a[1]);
+
+  document.getElementById('chart-center-amount').textContent = fmt(total);
+
+  if (donutChart) { donutChart.destroy(); donutChart = null; }
+
+  if (sorted.length === 0) {
+    document.getElementById('chart-legend').innerHTML = '<p style="color:var(--text-muted);font-size:12px;text-align:center;padding:8px 0">支出がありません</p>';
+    return;
+  }
+
+  const labels = sorted.map(([id]) => { const c=getCat(trip,id); return c.icon+' '+c.label; });
+  const data   = sorted.map(([,v]) => v);
+  const colors = sorted.map((_,i) => CAT_COLORS[i % CAT_COLORS.length]);
+
+  const ctx = document.getElementById('donut-chart').getContext('2d');
+  donutChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 0, hoverOffset: 6 }] },
+    options: {
+      cutout: '72%',
+      plugins: { legend: { display: false }, tooltip: {
+        callbacks: { label: (c) => ` ${fmt(c.raw)} (${total > 0 ? Math.round(c.raw/total*100) : 0}%)` }
+      }},
+      animation: { duration: 500 },
+    },
+  });
+
+  document.getElementById('chart-legend').innerHTML = sorted.slice(0,6).map(([id,amt],i) => {
+    const cat = getCat(trip, id);
+    const pct = total > 0 ? Math.round(amt/total*100) : 0;
+    return `<div class="legend-item">
+      <div class="legend-dot" style="background:${colors[i]}"></div>
+      <span class="legend-name">${cat.icon} ${cat.label}</span>
+      <span class="legend-pct">${pct}%</span>
+      <span class="legend-amt">${fmt(amt)}</span>
+    </div>`;
+  }).join('');
+}
+
+function renderBudgetList(trip) {
+  const catTotals = {};
+  for (const tx of trip.transactions) catTotals[tx.cat] = (catTotals[tx.cat]||0) + tx.amount;
+
+  const catsWithBudget = trip.categories.filter(c => c.budget > 0);
+  const el = document.getElementById('budget-list');
+  if (catsWithBudget.length === 0) {
+    el.innerHTML = '<div class="empty"><p>カテゴリに予算を設定すると<br>進捗が表示されます</p></div>';
+    return;
+  }
+
+  el.innerHTML = catsWithBudget.map(cat => {
+    const spent = catTotals[cat.id] || 0;
+    const pct = Math.min(100, Math.round(spent / cat.budget * 100));
+    const cls = pct < 70 ? 'ok' : pct < 90 ? 'warn' : 'over';
+    return `<div class="budget-item">
+      <div class="budget-item-header">
+        <div class="budget-item-name">${cat.icon} ${esc(cat.label)}</div>
+        <div class="budget-item-amounts">${fmt(spent)} / <span>${fmt(cat.budget)}</span></div>
+      </div>
+      <div class="budget-bar-track">
+        <div class="budget-bar-fill ${cls}" style="width:${pct}%"></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── Trip CRUD ────────────────────────────────────────
+function selectTrip(id) {
+  state.currentTripId = id;
+  render();
+}
+
+function openTripModal(editing = false) {
+  editingTrip = editing;
+  const trip = editing ? currentTrip() : null;
+  document.getElementById('trip-modal-title').textContent = editing ? '旅行を編集' : '旅行を追加';
+
+  document.getElementById('trip-name').value   = trip ? trip.name       : '';
+  document.getElementById('trip-start').value  = trip ? trip.startDate  : new Date().toISOString().slice(0,10);
+  document.getElementById('trip-end').value    = trip ? trip.endDate    : addDays(new Date().toISOString().slice(0,10), 2);
+  document.getElementById('trip-budget').value = trip ? (trip.budget||'') : '';
+  document.getElementById('trip-icon').value   = trip ? (trip.icon||'✈️') : '✈️';
+
+  // Delete button for editing
+  const actions = document.getElementById('trip-modal-actions');
+  if (editing && state.trips.length > 1) {
+    actions.innerHTML = `
+      <button class="btn-danger" onclick="deleteTrip()">削除</button>
+      <button class="btn-cancel" onclick="closeTripModal()">キャンセル</button>
+      <button class="btn-submit" onclick="submitTrip()">保存する</button>`;
+  } else {
+    actions.innerHTML = `
+      <button class="btn-cancel" onclick="closeTripModal()">キャンセル</button>
+      <button class="btn-submit" onclick="submitTrip()">保存する</button>`;
+  }
+
+  document.getElementById('trip-modal').classList.add('open');
+  document.getElementById('trip-name').focus();
+}
+
+function closeTripModal() { document.getElementById('trip-modal').classList.remove('open'); }
+
+function submitTrip() {
+  const name   = document.getElementById('trip-name').value.trim();
+  const start  = document.getElementById('trip-start').value;
+  const end    = document.getElementById('trip-end').value;
+  const budget = parseInt(document.getElementById('trip-budget').value) || 0;
+  const icon   = document.getElementById('trip-icon').value.trim() || '✈️';
+
+  if (!name) { highlight('trip-name'); return; }
+  if (!start) { highlight('trip-start'); return; }
+  if (!end)   { highlight('trip-end'); return; }
+
+  if (editingTrip) {
+    const trip = currentTrip();
+    if (trip) { trip.name = name; trip.startDate = start; trip.endDate = end; trip.budget = budget; trip.icon = icon; }
+  } else {
+    const id = ++state.nextId;
+    state.trips.push({ id, name, icon, startDate: start, endDate: end, budget, transactions: [], categories: JSON.parse(JSON.stringify(DEFAULT_CATEGORIES)) });
+    state.currentTripId = id;
+  }
+
+  closeTripModal();
+  render();
+}
+
+function deleteTrip() {
+  if (!confirm('この旅行を削除しますか？\n支出履歴もすべて削除されます。')) return;
+  state.trips = state.trips.filter(t => t.id !== state.currentTripId);
+  state.currentTripId = state.trips.length > 0 ? state.trips[state.trips.length-1].id : null;
+  closeTripModal();
+  render();
+}
+
+// ── Expense CRUD ─────────────────────────────────────
+function openAddExpense() {
+  editExpenseId = null;
+  const trip = currentTrip();
+  if (!trip) return;
+  document.getElementById('expense-modal-title').textContent = '支出を追加';
+  document.getElementById('exp-amount').value = '';
+  document.getElementById('exp-memo').value = '';
+  // Default date: within trip range, today if possible
+  const today = new Date().toISOString().slice(0,10);
+  let defaultDate = today;
+  if (trip.startDate && today < trip.startDate) defaultDate = trip.startDate;
+  if (trip.endDate   && today > trip.endDate)   defaultDate = trip.endDate;
+  document.getElementById('exp-date').value = defaultDate;
+  selectedCatId = trip.categories[0]?.id || 'other';
+  renderCatGrid(trip);
+  document.getElementById('expense-modal').classList.add('open');
+  document.getElementById('exp-amount').focus();
+}
+
+function openEditExpense(id) {
+  const trip = currentTrip();
+  if (!trip) return;
+  const tx = trip.transactions.find(t => t.id === id);
+  if (!tx) return;
+  editExpenseId = id;
+  document.getElementById('expense-modal-title').textContent = '支出を編集';
+  document.getElementById('exp-amount').value = tx.amount;
+  document.getElementById('exp-memo').value = tx.memo || '';
+  document.getElementById('exp-date').value = tx.date;
+  selectedCatId = tx.cat;
+  renderCatGrid(trip);
+  document.getElementById('expense-modal').classList.add('open');
+}
+
+function closeExpenseModal() {
+  document.getElementById('expense-modal').classList.remove('open');
+  editExpenseId = null;
+}
+
+function renderCatGrid(trip) {
+  const cats = (trip || currentTrip())?.categories || DEFAULT_CATEGORIES;
+  if (!cats.find(c => c.id === selectedCatId)) selectedCatId = cats[0]?.id;
+  const tiles = cats.map(c =>
+    `<button class="cat-btn ${c.id === selectedCatId ? 'selected' : ''}" onclick="selectCat('${c.id}')">
+      <button class="cat-btn-edit" onclick="openEditCatFromGrid(event,'${c.id}')" title="編集">✏️</button>
+      ${c.icon}<span>${esc(c.label)}</span>
+    </button>`
+  ).join('');
+  const addTile = `<button class="cat-btn-add" onclick="openQuickAddCat()">＋<span>追加</span></button>`;
+  document.getElementById('cat-grid').innerHTML = tiles + addTile;
+}
+
+function selectCat(id) { selectedCatId = id; renderCatGrid(); }
+
+function submitExpense() {
+  const amount = parseInt(document.getElementById('exp-amount').value);
+  const memo   = document.getElementById('exp-memo').value.trim();
+  const date   = document.getElementById('exp-date').value;
+  if (!amount || amount <= 0) { highlight('exp-amount'); return; }
+  if (!date) { highlight('exp-date'); return; }
+
+  const trip = currentTrip();
+  if (!trip) return;
+
+  if (editExpenseId) {
+    const tx = trip.transactions.find(t => t.id === editExpenseId);
+    if (tx) { tx.amount = amount; tx.cat = selectedCatId; tx.memo = memo; tx.date = date; }
+  } else {
+    trip.transactions.push({ id: ++state.nextId, cat: selectedCatId, amount, memo, date });
+  }
+
+  closeExpenseModal();
+  render();
+}
+
+function deleteExpense(e, id) {
+  e.stopPropagation();
+  const trip = currentTrip();
+  if (!trip) return;
+  trip.transactions = trip.transactions.filter(t => t.id !== id);
+  render();
+}
+
+// ── Category Manager ─────────────────────────────────
+function openCatManager() {
+  renderCatManagerList();
+  document.getElementById('cat-modal').classList.add('open');
+}
+function closeCatModal() { document.getElementById('cat-modal').classList.remove('open'); render(); }
+
+function renderCatManagerList() {
+  const trip = currentTrip();
+  if (!trip) return;
+  document.getElementById('cat-manager-list').innerHTML = trip.categories.map(cat => `
+    <div class="cat-manager-item">
+      <div class="cat-manager-emoji">${cat.icon}</div>
+      <div class="cat-manager-name">${esc(cat.label)}</div>
+      <div class="cat-manager-budget">${cat.budget > 0 ? fmt(cat.budget) : '予算なし'}</div>
+      <div class="cat-manager-actions">
+        <button class="btn-sm" onclick="openEditCat('${cat.id}')">編集</button>
+      </div>
+    </div>`).join('');
+}
+
+function addCategory() {
+  const icon   = document.getElementById('new-cat-icon').value.trim() || '📦';
+  const label  = document.getElementById('new-cat-name').value.trim();
+  const budget = parseInt(document.getElementById('new-cat-budget').value) || 0;
+  if (!label) { highlight('new-cat-name'); return; }
+
+  const trip = currentTrip();
+  if (!trip) return;
+  const id = 'cat_' + Date.now();
+  trip.categories.push({ id, icon, label, budget });
+  document.getElementById('new-cat-icon').value = '';
+  document.getElementById('new-cat-name').value = '';
+  document.getElementById('new-cat-budget').value = '';
+  renderCatManagerList();
+  saveState();
+}
+
+let editCatSource = 'manager'; // 'manager' | 'grid'
+
+function openEditCat(id) {
+  editCatSource = 'manager';
+  _openEditCatModal(id);
+}
+function openEditCatFromGrid(e, id) {
+  e.stopPropagation();
+  editCatSource = 'grid';
+  _openEditCatModal(id);
+}
+function _openEditCatModal(id) {
+  const trip = currentTrip();
+  if (!trip) return;
+  const cat = trip.categories.find(c => c.id === id);
+  if (!cat) return;
+  document.getElementById('edit-cat-id').value     = id;
+  document.getElementById('edit-cat-icon').value   = cat.icon;
+  document.getElementById('edit-cat-name').value   = cat.label;
+  document.getElementById('edit-cat-budget').value = cat.budget || '';
+  document.getElementById('edit-cat-modal').classList.add('open');
+}
+function closeEditCatModal() {
+  document.getElementById('edit-cat-modal').classList.remove('open');
+}
+
+function submitEditCat() {
+  const id     = document.getElementById('edit-cat-id').value;
+  const icon   = document.getElementById('edit-cat-icon').value.trim() || '📦';
+  const label  = document.getElementById('edit-cat-name').value.trim();
+  const budget = parseInt(document.getElementById('edit-cat-budget').value) || 0;
+  if (!label) { highlight('edit-cat-name'); return; }
+
+  const trip = currentTrip();
+  if (!trip) return;
+  const cat = trip.categories.find(c => c.id === id);
+  if (cat) { cat.icon = icon; cat.label = label; cat.budget = budget; }
+  closeEditCatModal();
+  if (editCatSource === 'grid') renderCatGrid();
+  else renderCatManagerList();
+  saveState();
+}
+
+function deleteCategory() {
+  const id = document.getElementById('edit-cat-id').value;
+  const trip = currentTrip();
+  if (!trip) return;
+  if (!confirm('このカテゴリを削除しますか？\n（このカテゴリの支出は「その他」になります）')) return;
+  trip.transactions.forEach(tx => { if (tx.cat === id) tx.cat = 'other'; });
+  trip.categories = trip.categories.filter(c => c.id !== id);
+  closeEditCatModal();
+  if (editCatSource === 'grid') renderCatGrid();
+  else renderCatManagerList();
+  saveState();
+}
+
+function openQuickAddCat() {
+  document.getElementById('qadd-icon').value   = '';
+  document.getElementById('qadd-name').value   = '';
+  document.getElementById('qadd-budget').value = '';
+  document.getElementById('quick-add-cat-modal').classList.add('open');
+  setTimeout(() => document.getElementById('qadd-icon').focus(), 50);
+}
+function closeQuickAddCat() {
+  document.getElementById('quick-add-cat-modal').classList.remove('open');
+}
+function submitQuickAddCat() {
+  const icon   = document.getElementById('qadd-icon').value.trim() || '📦';
+  const label  = document.getElementById('qadd-name').value.trim();
+  const budget = parseInt(document.getElementById('qadd-budget').value) || 0;
+  if (!label) { highlight('qadd-name'); return; }
+
+  const trip = currentTrip();
+  if (!trip) return;
+  const id = 'cat_' + Date.now();
+  trip.categories.push({ id, icon, label, budget });
+  selectedCatId = id;
+  closeQuickAddCat();
+  renderCatGrid();
+  saveState();
+}
+
+// ── Utils ────────────────────────────────────────────
+function highlight(id) {
+  const el = document.getElementById(id);
+  el.classList.add('error');
+  el.focus();
+  setTimeout(() => el.classList.remove('error'), 1200);
+}
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// ── Share / Import ────────────────────────────────────
+function tripToBase64(trip) {
+  return btoa(unescape(encodeURIComponent(JSON.stringify(trip))));
+}
+function base64ToTrip(str) {
+  return JSON.parse(decodeURIComponent(escape(atob(str))));
+}
+
+function openShareModal() {
+  const trip = currentTrip();
+  if (!trip) return;
+  const encoded = tripToBase64(trip);
+  const url = location.href.split('#')[0] + '#trip=' + encoded;
+  document.getElementById('share-url-input').value = url;
+  const btn = document.getElementById('btn-copy');
+  btn.textContent = 'コピー';
+  btn.classList.remove('copied');
+  document.getElementById('share-modal').classList.add('open');
+}
+function closeShareModal() { document.getElementById('share-modal').classList.remove('open'); }
+
+function copyShareUrl() {
+  const url = document.getElementById('share-url-input').value;
+  navigator.clipboard.writeText(url).then(() => {
+    const btn = document.getElementById('btn-copy');
+    btn.textContent = 'コピー済 ✓';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'コピー'; btn.classList.remove('copied'); }, 2000);
+  });
+}
+
+function downloadTripJson() {
+  const trip = currentTrip();
+  if (!trip) return;
+  const blob = new Blob([JSON.stringify(trip, null, 2)], { type: 'application/json' });
+  const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: (trip.name || '旅行') + '.json' });
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function openImportModal() {
+  document.getElementById('import-url-input').value = '';
+  document.getElementById('import-file').value = '';
+  const notice = document.getElementById('import-notice');
+  notice.textContent = '';
+  notice.classList.remove('show');
+  document.getElementById('import-modal').classList.add('open');
+}
+function closeImportModal() { document.getElementById('import-modal').classList.remove('open'); }
+
+function importTrip(trip) {
+  if (!trip || !trip.name) throw new Error('データが正しくありません');
+  // ensure required fields
+  if (!trip.categories) trip.categories = JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));
+  if (!trip.transactions) trip.transactions = [];
+  trip.id = ++state.nextId;
+  state.trips.push(trip);
+  state.currentTripId = trip.id;
+  closeImportModal();
+  closeShareModal();
+  render();
+  return trip.name;
+}
+
+function importFromUrl() {
+  const raw = document.getElementById('import-url-input').value.trim();
+  const notice = document.getElementById('import-notice');
+  try {
+    let encoded = '';
+    if (raw.includes('#trip=')) encoded = raw.split('#trip=')[1];
+    else encoded = raw; // allow pasting raw base64 too
+    const trip = base64ToTrip(encoded);
+    const name = importTrip(trip);
+    notice.textContent = `「${name}」をインポートしました！`;
+    notice.classList.add('show');
+  } catch(e) {
+    notice.style.background = 'var(--expense-light)';
+    notice.style.borderColor = 'var(--expense)';
+    notice.style.color = 'var(--expense)';
+    notice.textContent = '読み込めませんでした。リンクを確認してください。';
+    notice.classList.add('show');
+  }
+}
+
+// File import
+document.getElementById('import-file').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const notice = document.getElementById('import-notice');
+    notice.style = '';
+    try {
+      const trip = JSON.parse(ev.target.result);
+      const name = importTrip(trip);
+      notice.textContent = `「${name}」をインポートしました！`;
+      notice.classList.add('show');
+    } catch(err) {
+      notice.style.background = 'var(--expense-light)';
+      notice.style.borderColor = 'var(--expense)';
+      notice.style.color = 'var(--expense)';
+      notice.textContent = 'ファイルを読み込めませんでした。';
+      notice.classList.add('show');
+    }
+  };
+  reader.readAsText(file);
+});
+
+// Drag & drop on import area
+const dropArea = document.getElementById('import-drop');
+dropArea.addEventListener('dragover', e => { e.preventDefault(); dropArea.classList.add('drag-over'); });
+dropArea.addEventListener('dragleave', () => dropArea.classList.remove('drag-over'));
+dropArea.addEventListener('drop', e => {
+  e.preventDefault();
+  dropArea.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) { document.getElementById('import-file').files = e.dataTransfer.files; document.getElementById('import-file').dispatchEvent(new Event('change')); }
+});
+
+// Check URL hash for shared trip on load
+function checkUrlHash() {
+  const hash = location.hash;
+  if (!hash.startsWith('#trip=')) return;
+  const encoded = hash.slice(6);
+  try {
+    const trip = base64ToTrip(encoded);
+    if (!trip?.name) return;
+    if (confirm(`共有された旅行「${trip.name}」を読み込みますか？`)) {
+      importTrip(trip);
+      history.replaceState(null, '', location.pathname);
+    }
+  } catch(e) {}
+}
+
+// ── Event bindings ────────────────────────────────────
+document.getElementById('btn-new-trip').onclick    = () => openTripModal(false);
+document.getElementById('add-expense-btn').onclick = openAddExpense;
+document.getElementById('btn-manage-cats').onclick = openCatManager;
+document.getElementById('btn-import').onclick      = openImportModal;
+
+// Close modals on overlay click
+const MODAL_CLOSERS = {
+  'trip-modal': closeTripModal,
+  'expense-modal': closeExpenseModal,
+  'cat-modal': closeCatModal,
+  'edit-cat-modal': closeEditCatModal,
+  'quick-add-cat-modal': closeQuickAddCat,
+  'share-modal': closeShareModal,
+  'import-modal': closeImportModal,
+};
+Object.entries(MODAL_CLOSERS).forEach(([id, fn]) => {
+  document.getElementById(id).addEventListener('click', e => { if (e.target.id === id) fn(); });
+});
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    if (document.getElementById('edit-cat-modal').classList.contains('open')) { closeEditCatModal(); return; }
+    if (document.getElementById('quick-add-cat-modal').classList.contains('open')) { closeQuickAddCat(); return; }
+    closeTripModal(); closeExpenseModal(); closeCatModal(); closeShareModal(); closeImportModal();
+  }
+});
+
+// ── Init ─────────────────────────────────────────────
+render();
+checkUrlHash();
+</script>
+</body>
+</html>
